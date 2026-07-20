@@ -64,7 +64,6 @@ func Connect(cfg *config.Config) {
 		&models.AIMessage{},
 		&models.AIDocumentAnalysis{},
 		&models.AIRecommendation{},
-		&models.VideoRoom{},
 		&models.Invoice{},
 		&models.Payment{},
 	); err != nil {
@@ -73,7 +72,7 @@ func Connect(cfg *config.Config) {
 	log.Println("Database migrations completed")
 
 	DB = db
-	repairStaleVideoRooms()
+	
 }
 
 // repairStaleVideoRooms is a one-time data fix for rooms created before the
@@ -84,19 +83,4 @@ func Connect(cfg *config.Config) {
 // call" busy check forever. Anything never answered and not already ended
 // is closed out here as a missed call so busy detection only ever reflects
 // calls someone genuinely picked up.
-func repairStaleVideoRooms() {
-	result := DB.Model(&models.VideoRoom{}).
-		Where("status = ? AND started_at IS NULL AND ended_at IS NULL", models.VideoRoomStatusActive).
-		Updates(map[string]interface{}{
-			"status":   models.VideoRoomStatusEnded,
-			"outcome":  models.VideoRoomOutcomeMissed,
-			"ended_at": time.Now(),
-		})
-	if result.Error != nil {
-		log.Printf("Failed to repair stale video rooms: %v", result.Error)
-		return
-	}
-	if result.RowsAffected > 0 {
-		log.Printf("Repaired %d stale video call room(s) stuck in a false 'active/busy' state", result.RowsAffected)
-	}
-}
+

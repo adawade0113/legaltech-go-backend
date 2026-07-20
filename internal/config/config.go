@@ -38,6 +38,12 @@ type Config struct {
 	// production. Empty by default — dev already works via the built-in
 	// localhost/LAN/ngrok allowance in middleware.CORSMiddleware without
 	// needing this set.
+	// FirebaseCredentialsBase64 is the base64-encoded contents of the same
+// service-account JSON key, used when the file isn't available on disk
+// (e.g. AWS Elastic Beanstalk deployments where secret files aren't
+// committed to the repo).
+	FirebaseCredentialsBase64 string
+
 	CORSAllowedOrigins string
 }
 
@@ -73,7 +79,8 @@ func Load() *Config {
 		TurnUsername:            getEnv("TURN_USERNAME", ""),
 		TurnCredential:          getEnv("TURN_CREDENTIAL", ""),
 		FirebaseCredentialsFile: getEnv("FIREBASE_CREDENTIALS_FILE", ""),
-		CORSAllowedOrigins:      getEnv("CORS_ALLOWED_ORIGINS", ""),
+		FirebaseCredentialsBase64: getEnv("FIREBASE_CREDENTIALS_BASE64", ""),
+        CORSAllowedOrigins:      getEnv("CORS_ALLOWED_ORIGINS", ""),
 	}
 }
 

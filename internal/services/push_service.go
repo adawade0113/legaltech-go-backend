@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"log"
 
 	firebase "firebase.google.com/go/v4"
@@ -40,9 +41,10 @@ func GetConfig() *config.Config {
 }
 
 // PushService sends real push notifications via Firebase Cloud Messaging.
-// It is a safe no-op when FIREBASE_CREDENTIALS_FILE isn't configured (or the
-// file/credentials are invalid) — every other feature keeps working exactly
-// as before; push notifications just silently don't fire until it's set up.
+// It is a safe no-op when neither FIREBASE_CREDENTIALS_FILE nor
+// FIREBASE_CREDENTIALS_BASE64 is configured (or the credentials are
+// invalid) — every other feature keeps working exactly as before; push
+// notifications just silently don't fire until it's set up.
 // See README/setup instructions for how to create the Firebase project and
 // service-account key.
 type PushService struct {
@@ -50,12 +52,24 @@ type PushService struct {
 }
 
 func NewPushService(cfg *config.Config) *PushService {
-	if cfg.FirebaseCredentialsFile == "" {
-		log.Println("[push] FIREBASE_CREDENTIALS_FILE not set — push notifications disabled")
+	var app *firebase.App
+	var err error
+
+	switch {
+	case cfg.FirebaseCredentialsBase64 != "":
+		decoded, decodeErr := base64.StdEncoding.DecodeString(cfg.FirebaseCredentialsBase64)
+		if decodeErr != nil {
+			log.Printf("[push] Failed to decode FIREBASE_CREDENTIALS_BASE64 (push notifications disabled): %v", decodeErr)
+			return &PushService{}
+		}
+		app, err = firebase.NewApp(context.Background(), nil, option.WithCredentialsJSON(decoded))
+	case cfg.FirebaseCredentialsFile != "":
+		app, err = firebase.NewApp(context.Background(), nil, option.WithCredentialsFile(cfg.FirebaseCredentialsFile))
+	default:
+		log.Println("[push] FIREBASE_CREDENTIALS_FILE / FIREBASE_CREDENTIALS_BASE64 not set — push notifications disabled")
 		return &PushService{}
 	}
 
-	app, err := firebase.NewApp(context.Background(), nil, option.WithCredentialsFile(cfg.FirebaseCredentialsFile))
 	if err != nil {
 		log.Printf("[push] Failed to initialize Firebase app (push notifications disabled): %v", err)
 		return &PushService{}
@@ -77,10 +91,15 @@ func NewPushService(cfg *config.Config) *PushService {
 // fire-and-forget convention for in-app notifications (see
 // NotificationService.Create's callers).
 func (s *PushService) SendToToken(deviceToken, title, body string, data map[string]string) {
-	if s.client == nil || deviceToken == "" {
+	if s.client == nil {
+		log.Println("[push] Firebase client is nil")
+
 		return
 	}
-
+	if deviceToken == "" {
+		log.Println("[push] Device token is empty")
+		return
+	}
 	msg := &messaging.Message{
 		Token: deviceToken,
 		Notification: &messaging.Notification{
@@ -90,7 +109,12 @@ func (s *PushService) SendToToken(deviceToken, title, body string, data map[stri
 		Data: data,
 	}
 
-	if _, err := s.client.Send(context.Background(), msg); err != nil {
-		log.Printf("[push] Failed to send push notification: %v", err)
+	response, err := s.client.Send(context.Background(), msg)
+
+	if err != nil {
+		log.Printf("[push] FCM send error: %v", err)
+		return
 	}
+
+	log.Printf("[push] FCM sent successfully: %s", response)
 }
